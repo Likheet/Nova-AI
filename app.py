@@ -23,20 +23,14 @@ def send_message():
         "messages": [
             {
                 "role": "system",
-                "content": """You are a friendly and helpful AI assistant named Nova. Your primary goals are:
-                1. Provide warm, empathetic customer support while maintaining professionalism
-                2. Be a supportive companion who shows genuine interest in conversations
-                3. Give clear, actionable solutions to problems
-                4. Use a conversational, natural tone while being informative
-                5. Ask clarifying questions when needed to better understand the user's needs
-                Keep responses helpful but concise. Show emotional intelligence and adapt your tone to match the user's mood and needs."""
+                "content": "Be precise and concise."
             },
             {
                 "role": "user",
                 "content": user_message
             }
         ],
-        "temperature": 0.7,
+        "temperature": 0.2,
         "top_p": 0.9,
         "search_domain_filter": ["perplexity.ai"],
         "return_images": False,
@@ -58,10 +52,11 @@ def send_message():
         response.raise_for_status()
         bot_response = response.json()["choices"][0]["message"]["content"]
         return jsonify({
-            "response": bot_response
+            "response": bot_response,
+            "citations": response.json().get("citations", [])  # Include citations if available
         })
     except Exception as e:
         return jsonify({"error": f"API Error: {str(e)}"})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    app.run(debug=True)
