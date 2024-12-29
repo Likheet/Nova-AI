@@ -1,0 +1,45 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova AI Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="chat-container">
+        <div class="sidebar">
+            <div class="new-chat">
+                <button onclick="newChat()">+ New Chat</button>
+            </div>
+            <div class="history">
+                <!-- Chat history will go here -->
+            </div>
+        </div>
+        <div class="main-content">
+            <div class="chat-messages" id="chat-messages">
+                <div class="welcome-message">
+                    <h1>Nova AI Assistant</h1>
+                    <p>How can I help you today?</p>
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <div class="input-wrapper">
+                    <input type="text" id="user-input" placeholder="Message Nova...">
+                    <button onclick="sendMessage()">
+                        <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </div>
+                <div class="disclaimer">
+                    Nova AI Assistant may produce inaccurate information.
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
