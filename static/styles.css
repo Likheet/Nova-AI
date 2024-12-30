@@ -156,3 +156,34 @@ body {
     overflow-x: auto;
     margin: 10px 0;
 }
+.chat-history {
+    margin-top: 20px;
+    overflow-y: auto;
+}
+
+.chat-history-item {
+    padding: 10px;
+    margin: 5px 0;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    color: #ECECF1;
+}
+
+.chat-history-item:hover {
+    background-color: #2A2B32;
+}
+
+.chat-history-item.active {
+    background-color: #343541;
+}
+
+.chat-title {
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.chat-date {
+    font-size: 0.8em;
+    color: #8E8EA0;
+}
