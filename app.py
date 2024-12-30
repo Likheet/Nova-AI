@@ -1,15 +1,18 @@
-from flask import Flask, render_template, request, jsonify
-import requests
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from functools import wraps
 import os
+import requests
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv
 import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
 app = Flask(__name__)
 API_KEY = os.getenv("PERPLEXITY_API_KEY")
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key')  # Add to .env in production
 
 # Database functions
 def init_db():
@@ -38,34 +41,127 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        
+        db = get_db()
+        cursor = db.cursor()
+        user = cursor.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        db.close()
+        
+        if user and check_password_hash(user['password'], password):
+            session['username'] = username
+            return redirect(url_for('home'))
+        return render_template('login.html', error='Invalid credentials')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('username', None)
+    return redirect(url_for('login'))
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        confirm_password = request.form['confirm_password']
+        
+        if password != confirm_password:
+            return render_template('register.html', error='Passwords do not match')
+        
+        db = get_db()
+        cursor = db.cursor()
+        
+        # Check if username already exists
+        if cursor.execute('SELECT 1 FROM users WHERE username = ?', (username,)).fetchone():
+            db.close()
+            return render_template('register.html', error='Username already exists')
+        
+        # Hash the password
+        hashed_password = generate_password_hash(password)
+        
+        try:
+            cursor.execute('INSERT INTO users (username, password) VALUES (?, ?)',
+                         (username, hashed_password))
+            db.commit()
+            db.close()
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.close()
+            return render_template('register.html', error=f'Registration failed: {str(e)}')
+            
+    return render_template('register.html')
+
 @app.route('/')
+@login_required
 def home():
     try:
         db = get_db()
-        chats = db.execute('SELECT * FROM chats ORDER BY created_at DESC').fetchall()
+        user = db.execute('SELECT id FROM users WHERE username = ?', 
+                         (session['username'],)).fetchone()
+        chats = db.execute('SELECT * FROM chats WHERE user_id = ? ORDER BY created_at DESC',
+                          (user['id'],)).fetchall()
         db.close()
-        return render_template('index.html', chats=chats)
+        return render_template('index.html', chats=chats, username=session['username'])
     except Exception as e:
         print(f"Error in home route: {e}")
-        return render_template('index.html', chats=[])
+        return render_template('index.html', chats=[], username=session['username'])
 
 @app.route('/get_chat_history')
+@login_required
 def get_chat_history():
     db = get_db()
-    chats = db.execute('SELECT * FROM chats ORDER BY created_at DESC').fetchall()
+    # Get user_id from username
+    user = db.execute('SELECT id FROM users WHERE username = ?', 
+                     (session['username'],)).fetchone()
+    chats = db.execute('SELECT * FROM chats WHERE user_id = ? ORDER BY created_at DESC',
+                      (user['id'],)).fetchall()
     db.close()
     return jsonify({
         "chats": [{"id": chat['id'], "title": chat['title'], "created_at": chat['created_at']} 
                  for chat in chats]
     })
 
+@app.route('/update_chat_title/<chat_id>', methods=['POST'])
+@login_required
+def update_chat_title(chat_id):
+    try:
+        data = request.get_json()
+        title = data.get('title')
+        
+        db = get_db()
+        db.execute('UPDATE chats SET title = ? WHERE id = ?', (title, chat_id))
+        db.commit()
+        db.close()
+        
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/new_chat', methods=['POST'])
+@login_required
 def new_chat():
     chat_id = str(uuid.uuid4())
-    title = f"Chat {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+    current_time = datetime.now()
+    # Format title with date and time
+    title = f"Chat {current_time.strftime('%d-%m-%Y %H:%M')}"
     db = get_db()
-    db.execute('INSERT INTO chats (id, title, created_at) VALUES (?, ?, ?)',
-               (chat_id, title, datetime.now().isoformat()))
+    # Get user_id from username
+    user = db.execute('SELECT id FROM users WHERE username = ?', 
+                     (session['username'],)).fetchone()
+    db.execute('INSERT INTO chats (id, title, created_at, user_id) VALUES (?, ?, ?, ?)',
+               (chat_id, title, current_time.isoformat(), user['id']))
     db.commit()
     db.close()
     return jsonify({"chat_id": chat_id, "title": title})
@@ -136,13 +232,17 @@ def get_messages(chat_id):
     return jsonify({"messages": [(msg['role'], msg['content']) for msg in messages]})
 
 @app.route('/clear_history', methods=['POST'])
+@login_required
 def clear_history():
     try:
         db = get_db()
-        # Delete all messages first due to foreign key constraint
-        db.execute('DELETE FROM messages')
-        # Then delete all chats
-        db.execute('DELETE FROM chats')
+        user = db.execute('SELECT id FROM users WHERE username = ?', 
+                         (session['username'],)).fetchone()
+        # Delete messages from user's chats
+        db.execute('''DELETE FROM messages WHERE chat_id IN 
+                     (SELECT id FROM chats WHERE user_id = ?)''', (user['id'],))
+        # Delete user's chats
+        db.execute('DELETE FROM chats WHERE user_id = ?', (user['id'],))
         db.commit()
         db.close()
         return jsonify({"success": True})

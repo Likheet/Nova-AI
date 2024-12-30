@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nova AI Assistant</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon.png') }}">
 </head>
 <body>
     <div class="chat-container">
@@ -12,6 +14,7 @@
             <div class="new-chat">
                 <button onclick="debouncedCreateNewChat()">+ New Chat</button>
             </div>
+            <button onclick="window.location.href='/logout'" class="logout-button">Logout</button>
             <div class="chat-history" id="chat-history">
                 {% for chat in chats %}
                 <div class="chat-history-item" data-chat-id="{{ chat.id }}" onclick="loadChat('{{ chat.id }}')">

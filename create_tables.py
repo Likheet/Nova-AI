@@ -6,23 +6,23 @@ def create_tables():
         conn = sqlite3.connect('chats.db')
         c = conn.cursor()
         
-        # Create chats table
+        # Create users table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS users
+            (id INTEGER PRIMARY KEY AUTOINCREMENT,
+             username TEXT UNIQUE NOT NULL,
+             password TEXT NOT NULL,
+             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)
+        ''')
+        
+        # Update chats table to include user_id
         c.execute('''
             CREATE TABLE IF NOT EXISTS chats
             (id TEXT PRIMARY KEY,
              title TEXT,
-             created_at TIMESTAMP)
-        ''')
-        
-        # Create messages table
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS messages
-            (id INTEGER PRIMARY KEY AUTOINCREMENT,
-             chat_id TEXT,
-             role TEXT,
-             content TEXT,
-             timestamp TIMESTAMP,
-             FOREIGN KEY (chat_id) REFERENCES chats (id))
+             created_at TIMESTAMP,
+             user_id INTEGER,
+             FOREIGN KEY (user_id) REFERENCES users (id))
         ''')
         
         conn.commit()

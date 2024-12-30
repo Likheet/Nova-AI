@@ -67,17 +67,45 @@ function displayChatHistory(chats) {
     chats.forEach(chat => {
         const chatElement = document.createElement('div');
         chatElement.className = 'chat-history-item';
+        chatElement.dataset.chatId = chat.id;
+        chatElement.onclick = () => loadChat(chat.id);
+        
         if (chat.id === currentChatId) {
             chatElement.classList.add('active');
         }
-        chatElement.onclick = () => loadChat(chat.id);
-        
+
+        // Format date as DD-MM-YYYY HH:MM
         const date = new Date(chat.created_at);
-        chatElement.innerHTML = `
-            <div class="chat-title">${chat.title}</div>
-            <div class="chat-date">${date.toLocaleDateString()}</div>
-        `;
+        const formatNumber = (n) => n.toString().padStart(2, '0');
+        const formattedDate = `${formatNumber(date.getDate())}-${formatNumber(date.getMonth() + 1)}-${date.getFullYear()} ${formatNumber(date.getHours())}:${formatNumber(date.getMinutes())}`;
+        
+        // Create elements instead of using innerHTML for better security
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'chat-title';
+        titleDiv.textContent = chat.title;
+        
+        const dateDiv = document.createElement('div');
+        dateDiv.className = 'chat-date';
+        dateDiv.textContent = formattedDate;
+        
+        chatElement.appendChild(titleDiv);
+        chatElement.appendChild(dateDiv);
         historyContainer.appendChild(chatElement);
+    });
+}
+
+function copyCode(button) {
+    const codeBlock = button.parentElement.querySelector('code');
+    const code = codeBlock.textContent;
+    
+    navigator.clipboard.writeText(code).then(() => {
+        button.textContent = 'Copied!';
+        button.classList.add('copied');
+        
+        setTimeout(() => {
+            button.textContent = 'Copy';
+            button.classList.remove('copied');
+        }, 2000);
     });
 }
 
@@ -93,10 +121,41 @@ async function loadChat(chatId) {
     }
 }
 
+async function updateChatTitle(chatId, firstMessage) {
+    // Truncate long messages and clean up special characters
+    let title = firstMessage
+        .split(' ')
+        .slice(0, 6)
+        .join(' ')
+        .replace(/[^\w\s]/gi, '')
+        .trim();
+    
+    if (title.length > 30) {
+        title = title.substring(0, 30) + '...';
+    }
+
+    try {
+        const response = await fetch(`/update_chat_title/${chatId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title })
+        });
+        
+        if (response.ok) {
+            await loadChatHistory(); // Refresh chat list
+        }
+    } catch (error) {
+        console.error('Error updating chat title:', error);
+    }
+}
+
 function highlightActiveChat() {
     document.querySelectorAll('.chat-history-item').forEach(item => {
         item.classList.remove('active');
-        if (item.dataset.chatId === currentChatId) {
+        // Convert both to strings for comparison
+        if (item.dataset.chatId.toString() === currentChatId.toString()) {
             item.classList.add('active');
         }
     });
@@ -155,20 +214,63 @@ function handleError(error) {
 }
 
 function formatMessage(message) {
-    // Remove citation numbers
-    message = message.replace(/\[\d+\]/g, '');
+    let parts = [];
+    let currentIndex = 0;
+    const codeBlockRegex = /```([\w-]*)\n([\s\S]*?)```/g;
     
-    // Convert Markdown-style bold
-    message = message.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Find all code blocks and split text
+    let match;
+    while ((match = codeBlockRegex.exec(message)) !== null) {
+        // Add text before code block
+        if (match.index > currentIndex) {
+            let textPart = message.slice(currentIndex, match.index);
+            parts.push({
+                type: 'text',
+                content: textPart
+            });
+        }
+        
+        // Add code block
+        parts.push({
+            type: 'code',
+            language: match[1],
+            content: match[2].trim()
+        });
+        
+        currentIndex = match.index + match[0].length;
+    }
     
-    // Convert Markdown-style italic
-    message = message.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    // Add remaining text
+    if (currentIndex < message.length) {
+        parts.push({
+            type: 'text',
+            content: message.slice(currentIndex)
+        });
+    }
     
-    // Convert line breaks and paragraphs
-    message = message.split('\n').map(para => `<p>${para.trim()}</p>`).join('');
-    
-    return message;
+    // Format each part
+    return parts.map(part => {
+        if (part.type === 'code') {
+            return `
+                <div class="code-block">
+                    ${part.language ? `<div class="code-header">${part.language}</div>` : ''}
+                    <pre><code class="${part.language}">${part.content}</code></pre>
+                    <button class="copy-button" onclick="copyCode(this)">Copy</button>
+                </div>
+            `;
+        } else {
+            // Format regular text
+            let text = part.content;
+            text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+            text = text.replace(/\[\d+\]/g, '');
+            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
+            text = text.split('\n').map(para => para.trim() ? `<p>${para}</p>` : '').join('');
+            return text;
+        }
+    }).join('');
 }
+
 
 function appendMessage(message, isUser) {
     const welcomeMessage = document.querySelector('.welcome-message');
@@ -224,6 +326,12 @@ async function sendMessage() {
 
         const data = await response.json();
         
+        // Update chat title after first message
+        const messagesCount = document.querySelectorAll('.message').length;
+        if (messagesCount === 1) {
+            await updateChatTitle(currentChatId, message);
+        }
+
         if (data.error) {
             appendMessage('Error: ' + data.error, false);
         } else {
@@ -232,7 +340,4 @@ async function sendMessage() {
     } catch (error) {
         appendMessage('Error: Could not connect to the server', false);
     }
-    document.addEventListener('DOMContentLoaded', () => {
-        loadChatHistory();
-    });
 }
