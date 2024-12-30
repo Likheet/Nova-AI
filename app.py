@@ -7,32 +7,46 @@ from datetime import datetime
 from dotenv import load_dotenv
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
+import google.generativeai as genai
+from werkzeug.utils import secure_filename
+import PyPDF2
+import io
 
 load_dotenv()
 
 app = Flask(__name__)
-API_KEY = os.getenv("PERPLEXITY_API_KEY")
-app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key')  # Add to .env in production
+app.secret_key = os.getenv('SECRET_KEY')  # Add this line
+API_KEY = os.getenv("GOOGLE_API_KEY")
+genai.configure(api_key=API_KEY)
 
 # Database functions
 def init_db():
     conn = sqlite3.connect('chats.db')
     c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS chats
-        (id TEXT PRIMARY KEY,
-         title TEXT,
-         created_at TIMESTAMP)
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS messages
-        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-         chat_id TEXT,
-         role TEXT,
-         content TEXT,
-         timestamp TIMESTAMP,
-         FOREIGN KEY (chat_id) REFERENCES chats (id))
-    ''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 username TEXT UNIQUE NOT NULL,
+                 password TEXT NOT NULL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS chats
+                (id TEXT PRIMARY KEY,
+                 title TEXT,
+                 created_at TIMESTAMP,
+                 user_id INTEGER,
+                 FOREIGN KEY (user_id) REFERENCES users (id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS messages
+                (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 chat_id TEXT,
+                 role TEXT,
+                 content TEXT,
+                 timestamp TIMESTAMP,
+                 FOREIGN KEY (chat_id) REFERENCES chats (id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS documents
+                (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 filename TEXT NOT NULL,
+                 content TEXT NOT NULL,
+                 upload_date TIMESTAMP,
+                 user_id INTEGER,
+                 FOREIGN KEY (user_id) REFERENCES users (id))''')
     conn.commit()
     conn.close()
 
@@ -166,73 +180,83 @@ def new_chat():
     db.close()
     return jsonify({"chat_id": chat_id, "title": title})
 
+# ...existing code...
+
+# ...existing code...
+
+# Default personality prompt
+DEFAULT_PERSONALITY = """You are a friendly and helpful AI assistant. Please respond in a warm, 
+conversational manner while being helpful and informative. Feel free to use friendly phrases but do not overdo it, but keep the responses concise and focused. If you don't know something, be honest about it in a friendly way."""
+
 @app.route('/send_message', methods=['POST'])
 @login_required
 def send_message():
     data = request.json
     user_message = data.get('message')
     chat_id = data.get('chat_id')
+    is_new_chat = data.get('is_new_chat', False)
 
     if not chat_id or not user_message:
         return jsonify({"error": "Chat ID and message are required"}), 400
 
-    with get_db() as db:
+    try:
+        db = get_db()
+        user = db.execute('SELECT id FROM users WHERE username = ?', 
+                         (session['username'],)).fetchone()
+        
+        # Get relevant documents only for this chat
+        documents = db.execute('''
+            SELECT d.content 
+            FROM documents d 
+            JOIN messages m ON m.chat_id = ? 
+            WHERE d.user_id = ? 
+            AND m.content LIKE 'PDF uploaded:%'
+        ''', (chat_id, user['id'])).fetchall()
+        
+        # Create document context
+        doc_context = ""
+        if documents:
+            doc_context = "\nAvailable documents:\n"
+            for doc in documents:
+                doc_context += doc['content'][:1000] + "...\n"
+        
+        # Get chat messages only if not a new chat
+        previous_messages = []
+        if not is_new_chat:
+            previous_messages = db.execute('''
+                SELECT role, content 
+                FROM messages 
+                WHERE chat_id = ? 
+                ORDER BY timestamp''', (chat_id,)).fetchall()
+        
         # Save user message
         db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
                    (chat_id, 'user', user_message, datetime.now().isoformat()))
         db.commit()
 
-    # Prepare API payload
-    payload = {
-        "model": "llama-3.1-sonar-small-128k-online",
-        "messages": [
-            {"role": "system", "content": "You are a friendly assistant. Respond to all inputs in a conversational manner, avoiding definitions or disambiguations."},
-            {"role": "user", "content": user_message}
-        ],
-        "temperature": 1.0,
-        "top_p": 0.9,
-        "stream": False
-    }
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
+        context = DEFAULT_PERSONALITY + doc_context
+        if not is_new_chat:
+            context += "\n\nPrevious conversation:\n"
+            context += "\n".join([f"{'User' if msg['role']=='user' else 'Assistant'}: {msg['content']}" 
+                                for msg in previous_messages])
+        context += f"\nUser: {user_message}\nAssistant: "
 
-    # Log the payload for debugging
-    print("Sending request to Perplexity API:")
-    print(payload)
-
-    try:
-        # Make API request
-        response = requests.post("https://api.perplexity.ai/chat/completions", json=payload, headers=headers)
-        print("API response status code:", response.status_code)  # Log status code
-        print("Raw API response content:", response.text)  # Log raw response content
-        response.raise_for_status()
-        response_data = response.json()
-
-        # Log parsed response for debugging
-        print("Parsed API response data:", response_data)
-
-        # Extract bot's response
-        bot_response = response_data["choices"][0]["message"]["content"]
+        # Generate response
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content(context)
+        bot_response = response.text.replace('Assistant:', '').strip()
 
         # Save bot response
-        with get_db() as db:
-            db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
-                       (chat_id, 'assistant', bot_response, datetime.now().isoformat()))
-            db.commit()
-
+        db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
+                   (chat_id, 'assistant', bot_response, datetime.now().isoformat()))
+        db.commit()
+        db.close()
+        
         return jsonify({"response": bot_response})
-    except requests.exceptions.RequestException as e:
-        print("RequestException occurred:", e)  # Log exception details
-        return jsonify({"error": f"API request failed: {e}"}), 500
-    except KeyError as e:
-        print("KeyError in API response:", e)  # Log KeyError details
-        return jsonify({"error": "Unexpected API response format"}), 500
     except Exception as e:
-        print("Unexpected error:", e)  # Log any other unexpected errors
-        return jsonify({"error": "An unexpected error occurred"}), 500
-
+        print(f"Error in send_message: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
 @app.route('/get_messages/<chat_id>')
 def get_messages(chat_id):
     db = get_db()
@@ -259,6 +283,62 @@ def clear_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+    
+# UPLOADING DOCUMENTS
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'pdf'}
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/upload_pdf', methods=['POST'])
+@login_required
+def upload_pdf():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+        
+    if file and allowed_file(file.filename):
+        try:
+            # Read PDF content
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+            content = ""
+            for page in pdf_reader.pages:
+                content += page.extract_text() + "\n"
+
+            # Save to database
+            db = get_db()
+            user = db.execute('SELECT id FROM users WHERE username = ?', 
+                            (session['username'],)).fetchone()
+            
+            # Store in documents table
+            db.execute('INSERT INTO documents (filename, content, upload_date, user_id) VALUES (?, ?, ?, ?)',
+                      (secure_filename(file.filename), content, datetime.now().isoformat(), user['id']))
+            db.commit()
+            
+            # Add to current chat context
+            if 'current_chat_id' in session:
+                db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
+                          (session['current_chat_id'], 'system', f"PDF Content from {file.filename}: {content[:1000]}...", 
+                           datetime.now().isoformat()))
+                db.commit()
+            
+            db.close()
+            return jsonify({"success": True, "message": "File uploaded and processed successfully"})
+            
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+            
+    return jsonify({"error": "Invalid file type"}), 400
+
+
 if __name__ == '__main__':
-    init_db()
+    with app.app_context():
+        init_db()
     app.run(debug=True)

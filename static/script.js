@@ -284,6 +284,68 @@ function newChat() {
     userInput.value = '';
 }
 
+// Add event listener for file upload
+document.getElementById('file-upload').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/upload_pdf', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Add visual indicator
+            const filesContainer = document.getElementById('uploaded-files');
+            const fileIndicator = document.createElement('div');
+            fileIndicator.className = 'file-indicator';
+            fileIndicator.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                </svg>
+                ${file.name}
+            `;
+            filesContainer.appendChild(fileIndicator);
+            
+            // Also add a system message
+            appendMessage(`PDF uploaded: ${file.name}`, false);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Upload failed:', error);
+        alert('Upload failed');
+    }
+});
+
+document.getElementById('upload-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    
+    try {
+        const response = await fetch('/upload_pdf', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert('File uploaded successfully');
+        } else {
+            alert('Error: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Upload failed:', error);
+        alert('Upload failed');
+    }
+});
+
 async function sendMessage() {
     const message = userInput.value.trim();
     if (!currentChatId) {
@@ -294,7 +356,6 @@ async function sendMessage() {
     appendMessage(message, true);
     userInput.value = '';
 
-    // Add loading indicator
     const loadingDiv = document.createElement('div');
     loadingDiv.className = 'message bot-message';
     loadingDiv.innerHTML = '<div class="loading-message">Nova is thinking</div>';
@@ -309,20 +370,13 @@ async function sendMessage() {
             },
             body: JSON.stringify({ 
                 message: message,
-                chat_id: currentChatId 
+                chat_id: currentChatId,
+                is_new_chat: !messageContainer.querySelector('.user-message')  // Check if this is first message
             })
         });
 
         const data = await response.json();
-        
-        // Remove loading indicator
         loadingDiv.remove();
-
-        // Update chat title after first message
-        const messagesCount = document.querySelectorAll('.message').length;
-        if (messagesCount === 1) {
-            await updateChatTitle(currentChatId, message);
-        }
 
         if (data.error) {
             appendMessage('Error: ' + data.error, false);
@@ -330,7 +384,6 @@ async function sendMessage() {
             appendMessage(data.response, false);
         }
     } catch (error) {
-        // Remove loading indicator
         loadingDiv.remove();
         appendMessage('Error: Could not connect to the server', false);
     }

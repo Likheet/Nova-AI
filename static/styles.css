@@ -179,23 +179,54 @@ th {
     padding: 20px;
     background-color: #343541;
     border-top: 1px solid #4E4F60;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.upload-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    background-color: #40414F;
+    border: 1px solid #4E4F60;
+    border-radius: 5px;
+    color: #ECECF1;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s;
+    white-space: nowrap;
 }
 
 .input-wrapper {
-    max-width: 800px;
-    margin: 0 auto;
-    position: relative;
+    flex: 1;
+    display: flex;
+    gap: 10px;
 }
 
 #user-input {
-    width: 100%;
-    padding: 12px 45px 12px 15px;
+    flex: 1;
+    padding: 12px 15px;
     background-color: #40414F;
     border: 1px solid #4E4F60;
     border-radius: 5px;
     color: #ECECF1;
     font-size: 1rem;
     outline: none;
+}
+
+.input-wrapper button {
+    padding: 8px 16px;
+    background-color: #10A37F;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.3s;
 }
 
 #user-input:focus {
@@ -523,5 +554,81 @@ th {
         transform: scale(1);
         opacity: 0.85;
         box-shadow: 0 4px 15px rgba(16, 163, 127, 0.2);
+    }
+}
+
+/* Upload PDF Styles */
+.chat-input-container {
+    padding: 20px;
+    background-color: #343541;
+    border-top: 1px solid #4E4F60;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#upload-form {
+    margin-right: 10px;
+}
+
+.upload-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 8px 12px;
+    background-color: #40414F;
+    border: 1px solid #4E4F60;
+    border-radius: 5px;
+    color: #ECECF1;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s;
+}
+
+.upload-label:hover {
+    background-color: #2D2E3A;
+}
+
+.upload-label svg {
+    stroke: #ECECF1;
+}
+
+.input-wrapper {
+    flex: 1;
+    position: relative;
+}
+
+.uploaded-files {
+    padding: 10px 20px;
+    border-top: 1px solid #4E4F60;
+}
+
+.file-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background-color: #40414F;
+    border-radius: 4px;
+    margin: 4px;
+    font-size: 0.9rem;
+    color: #ECECF1;
+    animation: slideIn 0.3s ease;
+}
+
+.file-indicator svg {
+    width: 16px;
+    height: 16px;
+    color: #10A37F;
+}
+
+@keyframes slideIn {
+    from { 
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to { 
+        opacity: 1;
+        transform: translateY(0);
     }
 }
