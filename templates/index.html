@@ -10,7 +10,7 @@
     <div class="chat-container">
         <div class="sidebar">
             <div class="new-chat">
-                <button onclick="createNewChat()">+ New Chat</button>
+                <button onclick="debouncedCreateNewChat()">+ New Chat</button>
             </div>
             <div class="chat-history" id="chat-history">
                 {% for chat in chats %}
@@ -20,6 +20,7 @@
                 </div>
                 {% endfor %}
             </div>
+            <button onclick="clearChatHistory()" class="clear-history">Clear History</button>
         </div>
         <div class="main-content">
             <div class="chat-messages markdown" id="chat-messages">

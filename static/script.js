@@ -10,6 +10,18 @@ userInput.addEventListener('keypress', function(e) {
 });
 
 async function createNewChat() {
+    // Check if there's an existing chat that's empty
+    if (currentChatId) {
+        // Get messages for current chat
+        const response = await fetch(`/get_messages/${currentChatId}`);
+        const data = await response.json();
+        
+        // If current chat has no messages, don't create a new one
+        if (data.messages.length === 0) {
+            return;
+        }
+    }
+
     try {
         const response = await fetch('/new_chat', {
             method: 'POST'
@@ -22,6 +34,21 @@ async function createNewChat() {
         console.error('Error creating new chat:', error);
     }
 }
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Wrap createNewChat with debounce
+const debouncedCreateNewChat = debounce(createNewChat, 300);
 
 async function loadChatHistory() {
     try {
@@ -74,12 +101,6 @@ function highlightActiveChat() {
         }
     });
 }
-async function loadChat(chatId) {
-    currentChatId = chatId;
-    const response = await fetch(`/get_messages/${chatId}`);
-    const data = await response.json();
-    displayMessages(data.messages);
-}
 
 function displayMessages(messages) {
     messageContainer.innerHTML = '';
@@ -95,6 +116,29 @@ function clearMessages() {
             <p>How can I help you today?</p>
         </div>
     `;
+}
+
+async function clearChatHistory() {
+    if (!confirm('Are you sure you want to clear all chat history?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/clear_history', {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const historyContainer = document.getElementById('chat-history');
+            historyContainer.innerHTML = '';
+            currentChatId = null;
+            clearMessages();
+        } else {
+            console.error('Failed to clear chat history');
+        }
+    } catch (error) {
+        console.error('Error clearing chat history:', error);
+    }
 }
 
 function showLoading() {

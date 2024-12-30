@@ -69,16 +69,55 @@ body {
 .message {
     max-width: 800px;
     margin: 20px auto;
-    padding: 20px;
+    padding: 15px 20px;
     line-height: 1.6;
+    border-radius: 12px;
+    position: relative;
+    animation: fadeIn 0.3s ease;
 }
 
 .user-message {
-    background-color: #343541;
+    background-color: #0f131a;
+    color: white;
+    margin-left: auto; /* Push to right */
+    margin-right: 0;
+    border-top-right-radius: 2px;
+    border-top-left-radius: 12px;
+    width: fit-content;
 }
 
 .bot-message {
     background-color: #444654;
+    color: #ECECF1;
+    margin-right: auto; /* Push to left */
+    margin-left: 0;
+    border-top-left-radius: 2px;
+    border-top-right-radius: 12px;
+    width: fit-content;
+}
+
+/* Add message animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Enhance chat messages container */
+.chat-messages {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 20px 40px;
+}
+
+/* Update bot message content styling */
+.bot-message p {
+    margin: 8px 0;
+}
+
+.bot-message code {
+    background-color: rgba(42, 43, 50, 0.7);
+    padding: 3px 6px;
 }
 
 .chat-input-container {
@@ -186,4 +225,20 @@ body {
 .chat-date {
     font-size: 0.8em;
     color: #8E8EA0;
+}
+
+.clear-history {
+    width: 100%;
+    padding: 12px;
+    background-color: #852626;
+    border: 1px solid #8b2020;
+    color: #ECECF1;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin-top: auto;
+}
+
+.clear-history:hover {
+    background-color: #812525;
 }

@@ -135,6 +135,20 @@ def get_messages(chat_id):
     db.close()
     return jsonify({"messages": [(msg['role'], msg['content']) for msg in messages]})
 
+@app.route('/clear_history', methods=['POST'])
+def clear_history():
+    try:
+        db = get_db()
+        # Delete all messages first due to foreign key constraint
+        db.execute('DELETE FROM messages')
+        # Then delete all chats
+        db.execute('DELETE FROM chats')
+        db.commit()
+        db.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 if __name__ == '__main__':
     init_db()
     app.run(debug=True)
