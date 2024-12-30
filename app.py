@@ -167,81 +167,71 @@ def new_chat():
     return jsonify({"chat_id": chat_id, "title": title})
 
 @app.route('/send_message', methods=['POST'])
+@login_required
 def send_message():
-    user_message = request.json['message']
-    chat_id = request.json.get('chat_id')
-    
-    if not chat_id:
-        return jsonify({"error": "No chat ID provided"})
+    data = request.json
+    user_message = data.get('message')
+    chat_id = data.get('chat_id')
 
-    # Get chat history from database
-    db = get_db()
-    previous_messages = db.execute('''
-        SELECT role, content FROM messages 
-        WHERE chat_id = ? 
-        ORDER BY timestamp''', (chat_id,)).fetchall()
+    if not chat_id or not user_message:
+        return jsonify({"error": "Chat ID and message are required"}), 400
 
-    # Save user message to database
-    db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
-               (chat_id, 'user', user_message, datetime.now().isoformat()))
-    db.commit()
+    with get_db() as db:
+        # Save user message
+        db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
+                   (chat_id, 'user', user_message, datetime.now().isoformat()))
+        db.commit()
 
-    # Construct messages array with history
-    messages = [
-        {
-            "role": "system",
-            "content": """You are a friendly and helpful AI assistant named Nova. 
-                        You provide clear, accurate, and helpful responses while 
-                        maintaining a friendly and professional tone."""
-        }
-    ]
-
-    # Add conversation history
-    for msg in previous_messages:
-        messages.append({
-            "role": msg['role'],
-            "content": msg['content']
-        })
-
-    # Add current user message
-    messages.append({
-        "role": "user",
-        "content": user_message
-    })
-
-    # Perplexity API call
-    url = "https://api.perplexity.ai/chat/completions"
+    # Prepare API payload
     payload = {
-        "model": "llama-3.1-sonar-huge-128k-online",
-        "messages": messages,
-        "temperature": 0.7,
+        "model": "llama-3.1-sonar-small-128k-online",
+        "messages": [
+            {"role": "system", "content": "You are a friendly assistant. Respond to all inputs in a conversational manner, avoiding definitions or disambiguations."},
+            {"role": "user", "content": user_message}
+        ],
+        "temperature": 1.0,
         "top_p": 0.9,
-        "search_domain_filter": None,
-        "return_images": False,
-        "return_related_questions": False,
         "stream": False
     }
-    
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
 
+    # Log the payload for debugging
+    print("Sending request to Perplexity API:")
+    print(payload)
+
     try:
-        response = requests.post(url, json=payload, headers=headers)
+        # Make API request
+        response = requests.post("https://api.perplexity.ai/chat/completions", json=payload, headers=headers)
+        print("API response status code:", response.status_code)  # Log status code
+        print("Raw API response content:", response.text)  # Log raw response content
         response.raise_for_status()
-        bot_response = response.json()["choices"][0]["message"]["content"]
-        
-        # Save bot response to database
-        db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
-                  (chat_id, 'assistant', bot_response, datetime.now().isoformat()))
-        db.commit()
-        db.close()
-        
+        response_data = response.json()
+
+        # Log parsed response for debugging
+        print("Parsed API response data:", response_data)
+
+        # Extract bot's response
+        bot_response = response_data["choices"][0]["message"]["content"]
+
+        # Save bot response
+        with get_db() as db:
+            db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
+                       (chat_id, 'assistant', bot_response, datetime.now().isoformat()))
+            db.commit()
+
         return jsonify({"response": bot_response})
+    except requests.exceptions.RequestException as e:
+        print("RequestException occurred:", e)  # Log exception details
+        return jsonify({"error": f"API request failed: {e}"}), 500
+    except KeyError as e:
+        print("KeyError in API response:", e)  # Log KeyError details
+        return jsonify({"error": "Unexpected API response format"}), 500
     except Exception as e:
-        db.close()
-        return jsonify({"error": f"API Error: {str(e)}"})
+        print("Unexpected error:", e)  # Log any other unexpected errors
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 @app.route('/get_messages/<chat_id>')
 def get_messages(chat_id):
