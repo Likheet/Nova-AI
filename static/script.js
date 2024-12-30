@@ -74,28 +74,27 @@ function displayChatHistory(chats) {
             chatElement.classList.add('active');
         }
 
-        // Format date as DD-MM-YYYY HH:MM
-        const date = new Date(chat.created_at);
-        const formatNumber = (n) => n.toString().padStart(2, '0');
-        const formattedDate = `${formatNumber(date.getDate())}-${formatNumber(date.getMonth() + 1)}-${date.getFullYear()} ${formatNumber(date.getHours())}:${formatNumber(date.getMinutes())}`;
-        
-        // Create elements instead of using innerHTML for better security
         const titleDiv = document.createElement('div');
         titleDiv.className = 'chat-title';
-        titleDiv.textContent = chat.title;
+        titleDiv.textContent = chat.title || 'New Chat';
         
         const dateDiv = document.createElement('div');
         dateDiv.className = 'chat-date';
-        dateDiv.textContent = formattedDate;
+        
+        if (chat.title) {
+            const date = new Date(chat.created_at);
+            const formatNumber = (n) => n.toString().padStart(2, '0');
+            const formattedDate = `${formatNumber(date.getDate())}-${formatNumber(date.getMonth() + 1)}-${date.getFullYear()} ${formatNumber(date.getHours())}:${formatNumber(date.getMinutes())}`;
+            dateDiv.textContent = formattedDate;
+        }
         
         chatElement.appendChild(titleDiv);
         chatElement.appendChild(dateDiv);
         historyContainer.appendChild(chatElement);
     });
 }
-
 function copyCode(button) {
-    const codeBlock = button.parentElement.querySelector('code');
+    const codeBlock = button.previousElementSibling;
     const code = codeBlock.textContent;
     
     navigator.clipboard.writeText(code).then(() => {
@@ -214,63 +213,46 @@ function handleError(error) {
 }
 
 function formatMessage(message) {
+    const markedOptions = {
+        breaks: true,
+        gfm: true,
+        sanitize: true
+    };
+
     let parts = [];
     let currentIndex = 0;
     const codeBlockRegex = /```([\w-]*)\n([\s\S]*?)```/g;
-    
-    // Find all code blocks and split text
+
+    // Find and process code blocks
     let match;
     while ((match = codeBlockRegex.exec(message)) !== null) {
-        // Add text before code block
+        // Add text before code block (processed with marked)
         if (match.index > currentIndex) {
             let textPart = message.slice(currentIndex, match.index);
-            parts.push({
-                type: 'text',
-                content: textPart
-            });
+            parts.push(marked.parse(textPart, markedOptions));
         }
-        
-        // Add code block
-        parts.push({
-            type: 'code',
-            language: match[1],
-            content: match[2].trim()
-        });
-        
+
+        // Add custom formatted code block
+        const language = match[1];
+        const code = match[2].trim();
+        parts.push(`
+            <div class="code-block">
+                ${language ? `<div class="code-header">${language}</div>` : ''}
+                <pre><code class="${language}">${code}</code></pre>
+                <button class="copy-button" onclick="copyCode(this)">Copy</button>
+            </div>
+        `);
+
         currentIndex = match.index + match[0].length;
     }
-    
-    // Add remaining text
-    if (currentIndex < message.length) {
-        parts.push({
-            type: 'text',
-            content: message.slice(currentIndex)
-        });
-    }
-    
-    // Format each part
-    return parts.map(part => {
-        if (part.type === 'code') {
-            return `
-                <div class="code-block">
-                    ${part.language ? `<div class="code-header">${part.language}</div>` : ''}
-                    <pre><code class="${part.language}">${part.content}</code></pre>
-                    <button class="copy-button" onclick="copyCode(this)">Copy</button>
-                </div>
-            `;
-        } else {
-            // Format regular text
-            let text = part.content;
-            text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
-            text = text.replace(/\[\d+\]/g, '');
-            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-            text = text.split('\n').map(para => para.trim() ? `<p>${para}</p>` : '').join('');
-            return text;
-        }
-    }).join('');
-}
 
+    // Add remaining text (processed with marked)
+    if (currentIndex < message.length) {
+        parts.push(marked.parse(message.slice(currentIndex), markedOptions));
+    }
+
+    return parts.join('');
+}
 
 function appendMessage(message, isUser) {
     const welcomeMessage = document.querySelector('.welcome-message');
@@ -295,8 +277,8 @@ function appendMessage(message, isUser) {
 function newChat() {
     messageContainer.innerHTML = `
         <div class="welcome-message">
-            <h1>Nova AI Assistant</h1>
-            <p>How can I help you today?</p>
+            <h1 class="typing-effect">Nova AI Assistant</h1>
+            <p class="typing-effect delayed-typing">How can I help you today?</p>
         </div>
     `;
     userInput.value = '';
@@ -312,6 +294,13 @@ async function sendMessage() {
     appendMessage(message, true);
     userInput.value = '';
 
+    // Add loading indicator
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message bot-message';
+    loadingDiv.innerHTML = '<div class="loading-message">Nova is thinking</div>';
+    messageContainer.appendChild(loadingDiv);
+    messageContainer.scrollTop = messageContainer.scrollHeight;
+
     try {
         const response = await fetch('/send_message', {
             method: 'POST',
@@ -326,6 +315,9 @@ async function sendMessage() {
 
         const data = await response.json();
         
+        // Remove loading indicator
+        loadingDiv.remove();
+
         // Update chat title after first message
         const messagesCount = document.querySelectorAll('.message').length;
         if (messagesCount === 1) {
@@ -338,6 +330,8 @@ async function sendMessage() {
             appendMessage(data.response, false);
         }
     } catch (error) {
+        // Remove loading indicator
+        loadingDiv.remove();
         appendMessage('Error: Could not connect to the server', false);
     }
 }

@@ -155,7 +155,7 @@ def new_chat():
     chat_id = str(uuid.uuid4())
     current_time = datetime.now()
     # Format title with date and time
-    title = f"Chat {current_time.strftime('%d-%m-%Y %H:%M')}"
+    title = f"New Chat"
     db = get_db()
     # Get user_id from username
     user = db.execute('SELECT id FROM users WHERE username = ?', 
@@ -174,26 +174,46 @@ def send_message():
     if not chat_id:
         return jsonify({"error": "No chat ID provided"})
 
-    # Save user message to database
+    # Get chat history from database
     db = get_db()
+    previous_messages = db.execute('''
+        SELECT role, content FROM messages 
+        WHERE chat_id = ? 
+        ORDER BY timestamp''', (chat_id,)).fetchall()
+
+    # Save user message to database
     db.execute('INSERT INTO messages (chat_id, role, content, timestamp) VALUES (?, ?, ?, ?)',
                (chat_id, 'user', user_message, datetime.now().isoformat()))
     db.commit()
 
-    # Your existing Perplexity API call code here
+    # Construct messages array with history
+    messages = [
+        {
+            "role": "system",
+            "content": """You are a friendly and helpful AI assistant named Nova. 
+                        You provide clear, accurate, and helpful responses while 
+                        maintaining a friendly and professional tone."""
+        }
+    ]
+
+    # Add conversation history
+    for msg in previous_messages:
+        messages.append({
+            "role": msg['role'],
+            "content": msg['content']
+        })
+
+    # Add current user message
+    messages.append({
+        "role": "user",
+        "content": user_message
+    })
+
+    # Perplexity API call
     url = "https://api.perplexity.ai/chat/completions"
     payload = {
-        "model": "llama-3.1-sonar-small-128k-online",
-        "messages": [
-            {
-                "role": "system",
-                "content": """You are a friendly and helpful AI assistant named Nova..."""
-            },
-            {
-                "role": "user",
-                "content": user_message
-            }
-        ],
+        "model": "llama-3.1-sonar-huge-128k-online",
+        "messages": messages,
         "temperature": 0.7,
         "top_p": 0.9,
         "search_domain_filter": None,

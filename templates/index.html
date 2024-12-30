@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon.png') }}">
+    
 </head>
 <body>
     <div class="chat-container">
@@ -28,8 +29,8 @@
         <div class="main-content">
             <div class="chat-messages markdown" id="chat-messages">
                 <div class="welcome-message">
-                    <h1>Nova AI Assistant</h1>
-                    <p>How can I help you today?</p>
+                    <h1 class="fade-in">Nova AI Assistant</h1>
+                    <p class="typing-effect delayed-typing">How can I help you today?</p>
                 </div>
             </div>
             <div class="chat-input-container">
@@ -40,6 +41,7 @@
             </div>
         </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
